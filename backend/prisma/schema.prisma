@@ -1,0 +1,284 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String? // Nullable for Google Auth users
+  fullName  String
+  phone     String?  @unique
+  gender    String?
+  avatar    String?
+  accountType String @default("RIDER") // RIDER, DRIVER
+  onboardingCompleted Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdRides Ride[]        @relation("CreatedRides")
+  ridesJoined  Ride[]        @relation("RidePassengers")
+  rideRequests RideRequest[]
+  messages     Message[]
+  expensesPaid Expense[]
+  Poll         Poll[]
+  PollVote     PollVote[]
+  verification UserVerification?
+  preferences  UserPreference?
+  emergencyContacts EmergencyContact[]
+  savedCommutes SavedCommute[]
+  receivedRatings UserRating[] @relation("RatingReviewee")
+  givenRatings    UserRating[] @relation("RatingReviewer")
+  safetyAlerts    SafetyAlert[]
+  sustainabilityMetrics SustainabilityMetric[]
+  driverProfile DriverProfile?
+}
+
+model Ride {
+  id               String    @id @default(uuid())
+  origin           String
+  destination      String
+  departureTime    DateTime
+  arrivalTime      DateTime?
+  transportMode    String
+  totalSeats       Int
+  pricePerSeat     Float?
+  description      String?
+  genderPreference String? // "Any", "Male", "Female"
+  status           String    @default("OPEN") // OPEN, FULL, COMPLETED, CANCELLED
+  rideType         String    @default("DAILY_COMMUTE") // DAILY_COMMUTE, INTERCITY, EVENT
+  recurring        Boolean   @default(false)
+  routePolyline    String?
+  startLat         Float?
+  startLng         Float?
+  endLat           Float?
+  endLng           Float?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  creatorId String
+  creator   User   @relation("CreatedRides", fields: [creatorId], references: [id])
+
+  requests   RideRequest[]
+  passengers User[]        @relation("RidePassengers")
+  group      Group?
+  ratings    UserRating[]
+  sustainabilityMetrics SustainabilityMetric[]
+  safetyAlerts SafetyAlert[]
+}
+
+model RideRequest {
+  id        String   @id @default(uuid())
+  status    String   @default("PENDING") // PENDING, ACCEPTED, REJECTED
+  createdAt DateTime @default(now())
+
+  rideId String
+  ride   Ride   @relation(fields: [rideId], references: [id])
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+}
+
+model Group {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  rideId String @unique
+  ride   Ride   @relation(fields: [rideId], references: [id])
+
+  messages Message[]
+  expenses Expense[]
+  polls    Poll[]
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  content   String
+  createdAt DateTime @default(now())
+
+  groupId String
+  group   Group  @relation(fields: [groupId], references: [id])
+
+  senderId String
+  sender   User   @relation(fields: [senderId], references: [id])
+}
+
+model Expense {
+  id           String   @id @default(uuid())
+  amount       Float
+  description  String
+  type         String   @default("EQUAL") // EQUAL, EXACT, PERCENTAGE
+  splitDetails Json? // Store who owes what: { [userId]: { amount: number, settled: boolean } }
+  createdAt    DateTime @default(now())
+
+  groupId String
+  group   Group  @relation(fields: [groupId], references: [id])
+
+  payerId String
+  payer   User   @relation(fields: [payerId], references: [id])
+}
+
+model Poll {
+  id        String   @id @default(uuid())
+  question  String
+  createdAt DateTime @default(now())
+
+  groupId String
+  group   Group  @relation(fields: [groupId], references: [id])
+
+  creatorId String
+  creator   User   @relation(fields: [creatorId], references: [id])
+
+  options PollOption[]
+}
+
+model PollOption {
+  id   String @id @default(uuid())
+  text String
+
+  pollId String
+  poll   Poll   @relation(fields: [pollId], references: [id], onDelete: Cascade)
+
+  votes PollVote[]
+}
+
+model PollVote {
+  id String @id @default(uuid())
+
+  pollOptionId String
+  pollOption   PollOption @relation(fields: [pollOptionId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@unique([pollOptionId, userId])
+}
+
+model UserVerification {
+  id             String   @id @default(uuid())
+  status         String   @default("PENDING") // PENDING, VERIFIED, REJECTED
+  idType         String?
+  documentNumber String?
+  submittedAt    DateTime @default(now())
+  verifiedAt     DateTime?
+  trustScore     Int      @default(40)
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserPreference {
+  id                  String   @id @default(uuid())
+  homeLocation        String?
+  workLocation        String?
+  preferredDeparture  String?
+  preferredReturn     String?
+  seatPreference      String?  @default("ANY")
+  chatPreference      String?  @default("SOCIAL")
+  womenOnlyPreference Boolean  @default(false)
+  smokingAllowed      Boolean  @default(false)
+  musicPreference     String?  @default("ANY")
+  updatedAt           DateTime @updatedAt
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model EmergencyContact {
+  id           String   @id @default(uuid())
+  name         String
+  phone        String
+  relationship String
+  isPrimary    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SavedCommute {
+  id               String   @id @default(uuid())
+  label            String
+  origin           String
+  destination      String
+  departureTime    String
+  returnTime       String?
+  daysOfWeek       String[]
+  flexibleMinutes  Int      @default(15)
+  rideType         String   @default("DAILY_COMMUTE")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserRating {
+  id        String   @id @default(uuid())
+  rating    Int
+  review    String?
+  createdAt DateTime @default(now())
+
+  reviewerId String
+  reviewer   User   @relation("RatingReviewer", fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  revieweeId String
+  reviewee   User   @relation("RatingReviewee", fields: [revieweeId], references: [id], onDelete: Cascade)
+
+  rideId String?
+  ride   Ride?   @relation(fields: [rideId], references: [id], onDelete: SetNull)
+
+  @@unique([reviewerId, revieweeId, rideId])
+}
+
+model DriverProfile {
+  id             String   @id @default(uuid())
+  licenseNumber  String
+  vehicleType    String
+  vehicleModel   String
+  vehicleColor   String?
+  plateNumber    String
+  seatsOffered   Int      @default(4)
+  verifiedDriver Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SafetyAlert {
+  id           String   @id @default(uuid())
+  type         String   @default("SOS") // SOS, SHARE_TRIP, CHECK_IN
+  status       String   @default("ACTIVE") // ACTIVE, RESOLVED
+  latitude     Float?
+  longitude    Float?
+  notes        String?
+  triggeredAt  DateTime @default(now())
+  resolvedAt   DateTime?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  rideId String?
+  ride   Ride?   @relation(fields: [rideId], references: [id], onDelete: SetNull)
+}
+
+model SustainabilityMetric {
+  id             String   @id @default(uuid())
+  co2SavedKg     Float    @default(0)
+  fuelSavedLiters Float   @default(0)
+  moneySaved     Float    @default(0)
+  createdAt      DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  rideId String?
+  ride   Ride?   @relation(fields: [rideId], references: [id], onDelete: SetNull)
+}

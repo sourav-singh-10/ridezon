@@ -1,0 +1,39 @@
+export const projectConfig = {
+	projectId: "ridezon",
+	projectName: "Ridezon",
+	projectDescription: "Ridezon is a ride sharing platform for students.",
+	projectUrl: "https://ridezon.com",
+	projectImage: "https://ridezon.com/og.png",
+	projectLogo: "/lightridezon.png",
+	logoLight: "/lightridezon.png",
+	logoDark: "/darkridezon.png",
+	projectEmail: "support@ridezon.com",
+	projectTwitter: "@ridezon",
+	projectGithub: "https://github.com/ridezon",
+	projectSrc: "https://github.com/akshatnathani/ridezon",
+	team: [
+		{
+			name: "Harsh Puri",
+			role: "Full Stack Developer",
+			email: "hpuri@ridezon.com",
+			github: "https://github.com/harshpuri",
+			twitter: "https://twitter.com/harshpuri",
+		},
+		{
+			name: "Lakshay Sawhney",
+			role: "Full Stack Developer",
+			email: "lsawhney@ridezon.com",
+			github: "https://github.com/lakshaysawhney",
+			twitter: "https://twitter.com/lakshaysawhney",
+		},
+	],
+};
+
+const trimTrailingSlash = (value: string) => value.replace(/\/+$/, "");
+
+export const apiBaseUrl =
+	trimTrailingSlash(
+		process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api",
+	);
+
+export const socketBaseUrl = apiBaseUrl.replace(/\/api$/, "");

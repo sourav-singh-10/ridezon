@@ -1,0 +1,7 @@
+secrets.py
+.env
+.env.prod
+.env.dev
+db.sqlite3
+venv
+*.pyc

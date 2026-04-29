@@ -1,0 +1,323 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.updateRideStatus = exports.leaveRide = exports.respondToRequest = exports.joinRide = exports.updateRide = exports.deleteRide = exports.getRideById = exports.getMyRides = exports.getRides = exports.createRide = void 0;
+const prisma_1 = __importDefault(require("../prisma"));
+const createRide = async (req, res) => {
+    try {
+        const { origin, destination, startLat, startLng, endLat, endLng, departureTime, arrivalTime, transportMode, totalSeats, pricePerSeat, description, genderPreference, } = req.body;
+        const userId = req.user.id;
+        const user = await prisma_1.default.user.findUnique({ where: { id: userId } });
+        if (!user)
+            return res.status(404).json({ message: "User not found" });
+        if (!user.onboardingCompleted) {
+            return res.status(403).json({ message: "Complete your profile before offering rides" });
+        }
+        if (user.accountType !== "DRIVER") {
+            return res.status(403).json({ message: "Only driver accounts can create rides" });
+        }
+        const ride = await prisma_1.default.ride.create({
+            data: {
+                origin,
+                destination,
+                startLat,
+                startLng,
+                endLat,
+                endLng,
+                departureTime: new Date(departureTime),
+                arrivalTime: arrivalTime ? new Date(arrivalTime) : null,
+                transportMode,
+                totalSeats,
+                pricePerSeat,
+                description,
+                genderPreference,
+                creatorId: userId,
+                group: {
+                    create: {} // Create an empty group associated with the ride
+                }
+            },
+            include: { group: true }
+        });
+        res.status(201).json(ride);
+    }
+    catch (error) {
+        res.status(500).json({ message: "Error creating ride", error });
+    }
+};
+exports.createRide = createRide;
+const getRides = async (req, res) => {
+    try {
+        const rides = await prisma_1.default.ride.findMany({
+            include: {
+                creator: { select: { fullName: true, avatar: true, gender: true, phone: true, email: true } },
+                passengers: { select: { fullName: true, avatar: true, gender: true, phone: true } },
+                requests: { include: { user: { select: { fullName: true, avatar: true, email: true } } } },
+                group: true
+            },
+            orderBy: { departureTime: "asc" },
+        });
+        res.status(200).json(rides);
+    }
+    catch (error) {
+        res.status(500).json({ message: "Error fetching rides", error });
+    }
+};
+exports.getRides = getRides;
+const getMyRides = async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        if (!userId)
+            return res.status(401).json({ message: "Unauthorized" });
+        const rides = await prisma_1.default.ride.findMany({
+            where: {
+                OR: [
+                    { creatorId: userId },
+                    { passengers: { some: { id: userId } } },
+                ],
+            },
+            include: {
+                creator: { select: { fullName: true, avatar: true, gender: true, phone: true, email: true } },
+                passengers: { select: { id: true, fullName: true, avatar: true, gender: true, phone: true } },
+                requests: { include: { user: { select: { fullName: true, avatar: true, email: true } } } },
+                group: true,
+            },
+            orderBy: { departureTime: "asc" },
+        });
+        res.status(200).json(rides);
+    }
+    catch (error) {
+        res.status(500).json({ message: "Error fetching your rides", error });
+    }
+};
+exports.getMyRides = getMyRides;
+const getRideById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const ride = await prisma_1.default.ride.findUnique({
+            where: { id },
+            include: {
+                creator: { select: { fullName: true, avatar: true, phone: true, gender: true, email: true } },
+                passengers: { select: { fullName: true, avatar: true, gender: true, phone: true } },
+                requests: { include: { user: { select: { fullName: true, avatar: true } } } },
+                group: true
+            },
+        });
+        if (!ride)
+            return res.status(404).json({ message: "Ride not found" });
+        res.status(200).json(ride);
+    }
+    catch (error) {
+        res.status(500).json({ message: "Error fetching ride", error });
+    }
+};
+exports.getRideById = getRideById;
+const deleteRide = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user.id;
+        const ride = await prisma_1.default.ride.findUnique({ where: { id }, include: { group: true } });
+        if (!ride)
+            return res.status(404).json({ message: "Ride not found" });
+        if (ride.creatorId !== userId)
+            return res.status(403).json({ message: "Not authorized to delete this ride" });
+        if (ride.group) {
+            await prisma_1.default.group.delete({ where: { rideId: id } }).catch(() => { });
+        }
+        await prisma_1.default.ride.delete({ where: { id } });
+        res.status(200).json({ message: "Ride deleted successfully" });
+    }
+    catch (error) {
+        res.status(500).json({ message: "Error deleting ride", error });
+    }
+};
+exports.deleteRide = deleteRide;
+const updateRide = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { origin, destination, startLat, startLng, endLat, endLng, departureTime, arrivalTime, transportMode, totalSeats, pricePerSeat, description, genderPreference, } = req.body;
+        const userId = req.user.id;
+        const ride = await prisma_1.default.ride.findUnique({ where: { id } });
+        if (!ride)
+            return res.status(404).json({ message: "Ride not found" });
+        if (ride.creatorId !== userId)
+            return res.status(403).json({ message: "Not authorized to update this ride" });
+        const updatedRide = await prisma_1.default.ride.update({
+            where: { id },
+            data: {
+                origin,
+                destination,
+                startLat,
+                startLng,
+                endLat,
+                endLng,
+                departureTime: departureTime ? new Date(departureTime) : undefined,
+                arrivalTime: arrivalTime ? new Date(arrivalTime) : undefined,
+                transportMode,
+                totalSeats,
+                pricePerSeat,
+                description,
+                genderPreference
+            },
+            include: {
+                creator: { select: { fullName: true, avatar: true, phone: true, gender: true, email: true } },
+                passengers: { select: { fullName: true, avatar: true, gender: true, phone: true } },
+                group: true
+            }
+        });
+        res.status(200).json(updatedRide);
+    }
+    catch (error) {
+        res.status(500).json({ message: "Error updating ride", error });
+    }
+};
+exports.updateRide = updateRide;
+const joinRide = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user.id;
+        const user = await prisma_1.default.user.findUnique({ where: { id: userId } });
+        if (!user)
+            return res.status(404).json({ message: "User not found" });
+        if (!user.onboardingCompleted) {
+            return res.status(403).json({ message: "Complete your profile before joining rides" });
+        }
+        if (user.accountType !== "RIDER") {
+            return res.status(403).json({ message: "Driver accounts cannot join rides as riders" });
+        }
+        // Check if ride exists
+        const ride = await prisma_1.default.ride.findUnique({ where: { id }, include: { passengers: true } });
+        if (!ride)
+            return res.status(404).json({ message: "Ride not found" });
+        // Check if already joined
+        if (ride.passengers.some(p => p.id === userId)) {
+            return res.status(400).json({ message: "You are already a passenger" });
+        }
+        // Check if creator
+        if (ride.creatorId === userId) {
+            return res.status(400).json({ message: "You cannot join your own ride" });
+        }
+        // Check if request already exists
+        const existingRequest = await prisma_1.default.rideRequest.findFirst({
+            where: { rideId: id, userId, status: "PENDING" }
+        });
+        if (existingRequest) {
+            return res.status(400).json({ message: "Request already pending" });
+        }
+        const request = await prisma_1.default.rideRequest.create({
+            data: {
+                rideId: id,
+                userId,
+                status: "PENDING"
+            }
+        });
+        res.status(201).json(request);
+    }
+    catch (error) {
+        res.status(500).json({ message: "Error joining ride", error });
+    }
+};
+exports.joinRide = joinRide;
+const respondToRequest = async (req, res) => {
+    try {
+        const { id, requestId } = req.params;
+        const { status } = req.body; // ACCEPTED or REJECTED
+        const userId = req.user.id;
+        const ride = await prisma_1.default.ride.findUnique({ where: { id } });
+        if (!ride)
+            return res.status(404).json({ message: "Ride not found" });
+        if (ride.creatorId !== userId)
+            return res.status(403).json({ message: "Not authorized" });
+        const request = await prisma_1.default.rideRequest.findUnique({ where: { id: requestId } });
+        if (!request)
+            return res.status(404).json({ message: "Request not found" });
+        if (status === "ACCEPTED") {
+            // Add user to passengers
+            await prisma_1.default.ride.update({
+                where: { id },
+                data: {
+                    passengers: {
+                        connect: { id: request.userId }
+                    }
+                }
+            });
+        }
+        const updatedRequest = await prisma_1.default.rideRequest.update({
+            where: { id: requestId },
+            data: { status }
+        });
+        res.status(200).json(updatedRequest);
+    }
+    catch (error) {
+        res.status(500).json({ message: "Error responding to request", error });
+    }
+};
+exports.respondToRequest = respondToRequest;
+const leaveRide = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user.id;
+        const ride = await prisma_1.default.ride.findUnique({
+            where: { id },
+            include: { passengers: true }
+        });
+        if (!ride)
+            return res.status(404).json({ message: "Ride not found" });
+        if (ride.creatorId === userId) {
+            return res.status(400).json({ message: "Creators cannot leave the ride, they must delete it" });
+        }
+        const isPassenger = ride.passengers.some(p => p.id === userId);
+        if (!isPassenger) {
+            return res.status(400).json({ message: "You are not a passenger in this ride" });
+        }
+        await prisma_1.default.ride.update({
+            where: { id },
+            data: {
+                passengers: {
+                    disconnect: { id: userId }
+                }
+            }
+        });
+        res.status(200).json({ message: "Successfully left the ride" });
+    }
+    catch (error) {
+        res.status(500).json({ message: "Error leaving ride", error });
+    }
+};
+exports.leaveRide = leaveRide;
+const updateRideStatus = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+        const userId = req.user?.id;
+        if (!userId)
+            return res.status(401).json({ message: "Unauthorized" });
+        if (!status)
+            return res.status(400).json({ message: "Status is required" });
+        const allowedStatuses = ["OPEN", "IN_PROGRESS", "FULL", "COMPLETED", "CANCELLED"];
+        if (!allowedStatuses.includes(status)) {
+            return res.status(400).json({ message: "Invalid status" });
+        }
+        const ride = await prisma_1.default.ride.findUnique({ where: { id } });
+        if (!ride)
+            return res.status(404).json({ message: "Ride not found" });
+        if (ride.creatorId !== userId) {
+            return res.status(403).json({ message: "Only the ride creator can change trip status" });
+        }
+        const updatedRide = await prisma_1.default.ride.update({
+            where: { id },
+            data: { status },
+            include: {
+                creator: { select: { fullName: true, avatar: true, phone: true, gender: true, email: true } },
+                passengers: { select: { id: true, fullName: true, avatar: true, gender: true, phone: true } },
+                group: true,
+            },
+        });
+        res.status(200).json(updatedRide);
+    }
+    catch (error) {
+        res.status(500).json({ message: "Error updating ride status", error });
+    }
+};
+exports.updateRideStatus = updateRideStatus;
