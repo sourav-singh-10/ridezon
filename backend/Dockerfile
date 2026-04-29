@@ -1,12 +1,17 @@
-FROM node:20-alpine
+FROM node:20-bookworm-slim
 
 WORKDIR /app
+
+# Prisma needs OpenSSL available in the runtime/build image on Railway.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy package files
 COPY package*.json ./
 
 # Install dependencies
-RUN npm install
+RUN npm ci
 
 # Copy prisma schema
 COPY prisma ./prisma/
@@ -20,7 +25,7 @@ COPY . .
 # Build TypeScript
 RUN npm run build
 
-EXPOSE 3000
+EXPOSE 4000
 
 # Start the application
 CMD ["npm", "start"]
